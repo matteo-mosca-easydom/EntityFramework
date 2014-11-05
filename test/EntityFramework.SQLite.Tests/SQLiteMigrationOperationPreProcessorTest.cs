@@ -497,6 +497,120 @@ namespace Microsoft.Data.Entity.SQLite.Tests
             {
                 throw new InvalidOperationException();
             }
+
+            public override void Visit(DropColumnOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.RemoveColumn(operation.ColumnName);
+            }
+
+            public override void Visit(AlterColumnOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                var newColumn = operation.NewColumn;
+                var column = table.GetColumn(newColumn.Name);
+                column.Copy(newColumn);
+            }
+
+            public override void Visit(AddDefaultConstraintOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                var column = table.GetColumn(operation.ColumnName);
+                column.DefaultValue = operation.DefaultValue;
+                column.DefaultSql = operation.DefaultSql;
+            }
+
+            public override void Visit(DropDefaultConstraintOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                var column = table.GetColumn(operation.ColumnName);
+                column.DefaultValue = null;
+                column.DefaultSql = null;
+            }
+
+            public override void Visit(RenameColumnOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                var column = table.GetColumn(operation.ColumnName);
+                column.Name = operation.NewColumnName;
+            }
+
+            public override void Visit(AddPrimaryKeyOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.PrimaryKey = new PrimaryKey(
+                    operation.PrimaryKeyName,
+                    operation.ColumnNames.Select(table.GetColumn).ToArray(),
+                    operation.IsClustered);
+            }
+
+            public override void Visit(DropPrimaryKeyOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.PrimaryKey = null;
+            }
+
+            public override void Visit(AddUniqueConstraintOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.AddUniqueConstraint(
+                    new UniqueConstraint(
+                        operation.UniqueConstraintName,
+                        operation.ColumnNames.Select(table.GetColumn).ToArray()));
+            }
+
+            public override void Visit(DropUniqueConstraintOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.RemoveUniqueConstraint(operation.UniqueConstraintName);
+            }
+
+            public override void Visit(AddForeignKeyOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                var referencedTable = databaseModel.GetTable(operation.ReferencedTableName);
+                table.AddForeignKey(
+                    new ForeignKey(
+                        operation.ForeignKeyName,
+                        operation.ColumnNames.Select(table.GetColumn).ToArray(),
+                        operation.ReferencedColumnNames.Select(referencedTable.GetColumn).ToArray(),
+                        operation.CascadeDelete));
+            }
+
+            public override void Visit(DropForeignKeyOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.RemoveForeignKey(operation.ForeignKeyName);
+            }
+
+            public override void Visit(CreateIndexOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.AddIndex(
+                    new Index(
+                        operation.IndexName,
+                        operation.ColumnNames.Select(table.GetColumn).ToArray(),
+                        operation.IsUnique,
+                        operation.IsClustered));
+            }
+
+            public override void Visit(DropIndexOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                table.RemoveIndex(operation.IndexName);
+            }
+
+            public override void Visit(RenameIndexOperation operation, DatabaseModel databaseModel)
+            {
+                var table = databaseModel.GetTable(operation.TableName);
+                var index = table.GetIndex(operation.IndexName);
+                index.Name = operation.NewIndexName;
+            }
+
+            protected override void VisitDefault(MigrationOperation operation, DatabaseModel databaseModel)
+            {
+                throw new InvalidOperationException();
+            }
         }
     }
 }
