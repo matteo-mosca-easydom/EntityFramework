@@ -2,10 +2,11 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Text;
+using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Model;
 using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 using Microsoft.Data.Entity.Relational.Model;
 using Xunit;
 
@@ -36,7 +37,7 @@ namespace Microsoft.Data.Entity.SQLite.Tests
         [Fact]
         public void Generate_with_create_sequence_not_supported()
         {
-            var operation = new CreateSequenceOperation(new Sequence("EpisodeSequence", typeof(long), 0, 1));
+            var operation = new CreateSequenceOperation("EpisodeSequence", 0, 1);
 
             Assert.Equal(
                 Strings.MigrationOperationNotSupported(typeof(SQLiteMigrationOperationSqlGenerator), operation.GetType()),
@@ -76,22 +77,20 @@ namespace Microsoft.Data.Entity.SQLite.Tests
         [Fact]
         public void Generate_with_create_table_with_unique_constraints()
         {
-            var c0 = new Column("Id", typeof(long));
-            var c1 = new Column("C1", typeof(int));
-            var c2 = new Column("C2", typeof(string));
-            var table = new Table("T", new[] { c0, c1, c2 })
-                {
-                    PrimaryKey = new PrimaryKey("PK", new[] { c0 })
-                };
+            var modelBuilder = new BasicModelBuilder();
+            modelBuilder.Entity("T",
+                b =>
+                    {
+                        b.Property<long>("Id");
+                        b.Property<int>("C1");
+                        b.Property<string>("C2");
+                        b.Key("Id").ForRelational().Name("PK");
+                        b.Key("C1", "C2").ForRelational().Name("UC0");
+                        b.Key("C2").ForRelational().Name("UC1");
+                    });
 
-            table.AddUniqueConstraint(new UniqueConstraint("UC0", new[] { c0, c1 }));
-            table.AddUniqueConstraint(new UniqueConstraint("UC1", new[] { c2 }));
-
-            var database = new DatabaseModel();
-            database.AddTable(table);
-
-            var operation = new CreateTableOperation(table);
-            var sql = Generate(operation, database);
+            var operation = OperationFactory().CreateTableOperation(modelBuilder.Model.GetEntityType("T"));
+            var sql = Generate(operation, modelBuilder.Model);
 
             Assert.Equal(
                 @"CREATE TABLE ""T"" (
@@ -108,23 +107,27 @@ namespace Microsoft.Data.Entity.SQLite.Tests
         [Fact]
         public void Generate_with_create_table_generates_fks()
         {
-            var pegasusId = new Column("Id", typeof(long));
-            var pegasus = new Table("Pegasus", new[] { pegasusId });
-            var friend1Id = new Column("Friend1Id", typeof(long));
-            var friend2Id = new Column("Friend2Id", typeof(long));
-            var friendship = new Table("Friendship", new[] { friend1Id, friend2Id })
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("Pegasus",
+                b =>
                 {
-                    PrimaryKey = new PrimaryKey("PegasusPK", new[] { friend1Id, friend2Id })
-                };
-            friendship.AddForeignKey(new ForeignKey("FriendshipFK1", new[] { friend1Id }, new[] { pegasusId }));
-            friendship.AddForeignKey(new ForeignKey("FriendshipFK2", new[] { friend2Id }, new[] { pegasusId }));
-            var database = new DatabaseModel();
-            database.AddTable(pegasus);
-            database.AddTable(friendship);
+                    b.Property<long>("Id");
+                    b.Key("Id");
+                });
+            modelBuilder.Entity("Friendship",
+                b =>
+                {
+                    b.Property<long>("Friend1Id");
+                    b.Property<long>("Friend2Id");
+                    b.Key("Friend1Id", "Friend2Id").ForRelational().Name("PegasusPK");
+                    b.ForeignKey("Pegasus", "Friend1Id").ForRelational().Name("FriendshipFK1");
+                    b.ForeignKey("Pegasus", "Friend2Id").ForRelational().Name("FriendshipFK2");
+                });
 
-            var operation = new CreateTableOperation(friendship);
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("Friendship"));
 
-            var sql = Generate(operation, database);
+            var sql = Generate(operation, model);
 
             Assert.Equal(
                 @"CREATE TABLE ""Friendship"" (
@@ -197,17 +200,28 @@ namespace Microsoft.Data.Entity.SQLite.Tests
             Assert.Equal("\"my.Pony\"", sql);
         }
 
-        private static string Generate(MigrationOperation operation, DatabaseModel database = null)
+        private static string Generate(MigrationOperation operation, IModel targetModel = null)
         {
-            return CreateGenerator(database).Generate(operation).Sql;
+            return CreateGenerator(targetModel).Generate(operation).Sql;
         }
 
-        private static SQLiteMigrationOperationSqlGenerator CreateGenerator(DatabaseModel database = null)
+        private static SQLiteMigrationOperationSqlGenerator CreateGenerator(IModel targetModel = null)
         {
-            return new SQLiteMigrationOperationSqlGenerator(new SQLiteTypeMapper())
+            return new SQLiteMigrationOperationSqlGenerator(
+                new RelationalNameGenerator(
+                    new RelationalMetadataExtensionProvider()), 
+                new SQLiteTypeMapper())
                 {
-                    Database = database ?? new DatabaseModel(),
+                    TargetModel = targetModel ?? new Model(),
                 };
+        }
+
+        private static MigrationOperationFactory OperationFactory()
+        {
+            var extensionProvider = new RelationalMetadataExtensionProvider();
+            var nameGenerator = new RelationalNameGenerator(extensionProvider);
+
+            return new MigrationOperationFactory(extensionProvider, nameGenerator);
         }
     }
 }

@@ -1,46 +1,38 @@
 ﻿// Copyright (c) Microsoft Open Technologies, Inc. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System.Collections.Generic;
-using System.Linq;
 using JetBrains.Annotations;
-using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
-using Microsoft.Data.Entity.Migrations.Model;
-using Microsoft.Data.Entity.Relational.Model;
-using Microsoft.Data.Entity.SQLite.Utilities;
+using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 
 namespace Microsoft.Data.Entity.SQLite
 {
     public class SQLiteModelDiffer : ModelDiffer
     {
-        public SQLiteModelDiffer([NotNull] SQLiteDatabaseBuilder databaseBuilder)
-            : base(databaseBuilder)
+        public SQLiteModelDiffer(
+            [NotNull] RelationalMetadataExtensionProvider extensionProvider,
+            [NotNull] RelationalNameGenerator nameGenerator,
+            [NotNull] SQLiteTypeMapper typeMapper,
+            [NotNull] MigrationOperationFactory operationFactory,
+            [NotNull] SQLiteMigrationOperationPreProcessor operationProcessor)
+            : base(
+                extensionProvider,
+                nameGenerator,
+                typeMapper,
+                operationFactory,
+                operationProcessor)
         {
         }
 
-        public virtual new SQLiteDatabaseBuilder DatabaseBuilder
+        public virtual new SQLiteTypeMapper TypeMapper
         {
-            get { return (SQLiteDatabaseBuilder)base.DatabaseBuilder; }
+            get { return (SQLiteTypeMapper)base.TypeMapper; }
         }
 
-        protected override IReadOnlyList<MigrationOperation> Process(
-            MigrationOperationCollection operations,
-            DatabaseModel sourceDatabase,
-            DatabaseModel targetDatabase)
+        public virtual new SQLiteMigrationOperationPreProcessor OperationProcessor
         {
-            Check.NotNull(operations, "operations");
-            Check.NotNull(sourceDatabase, "sourceDatabase");
-            Check.NotNull(targetDatabase, "targetDatabase");
-
-            return
-                new SQLiteMigrationOperationPreProcessor(DatabaseBuilder.TypeMapper)
-                    .Process(operations, sourceDatabase, targetDatabase);
-        }
-
-        protected override string GetSequenceName(Column column)
-        {
-            return null;
+            get { return (SQLiteMigrationOperationPreProcessor)base.OperationProcessor; }
         }
     }
 }

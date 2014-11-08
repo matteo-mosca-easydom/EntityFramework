@@ -18,8 +18,10 @@ namespace Microsoft.Data.Entity.SqlServer
     {
         private int _variableCount;
 
-        public SqlServerMigrationOperationSqlGenerator([NotNull] SqlServerTypeMapper typeMapper)
-            : base(typeMapper)
+        public SqlServerMigrationOperationSqlGenerator(
+            [NotNull] RelationalNameGenerator nameGenerator,
+            [NotNull] SqlServerTypeMapper typeMapper)
+            : base(nameGenerator, typeMapper)
         {
         }
 

@@ -5,135 +5,150 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Model;
+using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.SqlServer.Metadata;
 using Microsoft.Data.Entity.SqlServer.Utilities;
 
 namespace Microsoft.Data.Entity.SqlServer
 {
-    public class SqlServerMigrationOperationPreProcessor : MigrationOperationVisitor<SqlServerMigrationOperationPreProcessor.Context>
+    public class SqlServerMigrationOperationPreProcessor : MigrationOperationProcessor
     {
-        private readonly SqlServerTypeMapper _typeMapper;
-
-        public SqlServerMigrationOperationPreProcessor([NotNull] SqlServerTypeMapper typeMapper)
+        public SqlServerMigrationOperationPreProcessor(
+            [NotNull] IRelationalMetadataExtensionProvider extensionProvider,
+            [NotNull] RelationalNameGenerator nameGenerator,
+            [NotNull] SqlServerTypeMapper typeMapper,
+            [NotNull] MigrationOperationFactory operationFactory)
+            : base(
+                extensionProvider,
+                nameGenerator,
+                typeMapper,
+                operationFactory)
         {
-            Check.NotNull(typeMapper, "typeMapper");
-
-            _typeMapper = typeMapper;
         }
 
-        public virtual SqlServerTypeMapper TypeMapper
+        public virtual new SqlServerMetadataExtensionProvider ExtensionProvider
         {
-            get { return _typeMapper; }
+            get { return (SqlServerMetadataExtensionProvider)base.ExtensionProvider; }
         }
 
-        public virtual IReadOnlyList<MigrationOperation> Process(            
-            [NotNull] MigrationOperationCollection operations,
-            [NotNull] DatabaseModel sourceDatabase,
-            [NotNull] DatabaseModel targetDatabase)
+        public virtual new SqlServerTypeMapper TypeMapper
+        {
+            get { return (SqlServerTypeMapper)base.TypeMapper; }
+        }
+
+        public override IReadOnlyList<MigrationOperation> Process(
+            MigrationOperationCollection operations, IModel sourceModel, IModel targetModel)
         {
             Check.NotNull(operations, "operations");
-            Check.NotNull(sourceDatabase, "sourceDatabase");
-            Check.NotNull(targetDatabase, "targetDatabase");
+            Check.NotNull(sourceModel, "sourceModel");
+            Check.NotNull(targetModel, "targetModel");
 
-            var context = new Context(operations, sourceDatabase, targetDatabase);
+            var context = new Context(operations, sourceModel, targetModel);
 
             foreach (var operation in operations.Get<DropTableOperation>())
             {
-                Visit(operation, context);
+                Process(operation, context);
             }
 
             foreach (var operation in operations.Get<DropColumnOperation>())
             {
-                Visit(operation, context);
+                Process(operation, context);
             }
 
             foreach (var operation in operations.Get<AlterColumnOperation>())
             {
-                Visit(operation, context);
+                Process(operation, context);
             }
 
             return context.Operations.GetAll();
         }
 
-        public override void Visit(DropTableOperation dropTableOperation, Context context)
+        protected virtual void Process(DropTableOperation dropTableOperation, Context context)
         {
             Check.NotNull(dropTableOperation, "dropTableOperation");
             Check.NotNull(context, "context");
 
-            var database = context.SourceDatabase;
-            var table = database.GetTable(dropTableOperation.TableName);
+            var entityType = context.SourceModel.EntityTypes.Single(
+                t => NameGenerator.FullTableName(t) == dropTableOperation.TableName);
 
-            foreach (var foreignKey in database.Tables
+            foreach (var foreignKey in context.SourceModel.EntityTypes
                     .SelectMany(t => t.ForeignKeys)
-                    .Where(fk => ReferenceEquals(fk.ReferencedTable, table)))
+                    .Where(fk => ReferenceEquals(fk.ReferencedEntityType, entityType)))
             {
-                context.Operations.Add(new DropForeignKeyOperation(foreignKey.Table.Name, foreignKey.Name),
+                context.Operations.Add(OperationFactory.DropForeignKeyOperation(foreignKey),
                     (x, y) => x.TableName == y.TableName && x.ForeignKeyName == y.ForeignKeyName);
             }
         }
 
-        public override void Visit(DropColumnOperation dropColumnOperation, Context context)
+        protected virtual void Process(DropColumnOperation dropColumnOperation, Context context)
         {
             Check.NotNull(dropColumnOperation, "dropColumnOperation");
             Check.NotNull(context, "context");
 
-            var database = context.SourceDatabase;
-            var table = database.GetTable(dropColumnOperation.TableName);
-            var column = table.GetColumn(dropColumnOperation.ColumnName);
+            var entityType = context.SourceModel.EntityTypes.Single(
+                t => NameGenerator.FullTableName(t) == dropColumnOperation.TableName);
+            var property = entityType.Properties.Single(
+                p => p.SqlServer().Column == dropColumnOperation.ColumnName);
+            var extensions = property.SqlServer();
 
-            if (column.HasDefault)
+            if (extensions.DefaultValue != null || extensions.DefaultExpression != null)
             {
-                context.Operations.Add(new DropDefaultConstraintOperation(table.Name, column.Name));
+                context.Operations.Add(OperationFactory.DropDefaultConstraintOperation(property));
             }
         }
 
-        public override void Visit(AlterColumnOperation alterColumnOperation, Context context)
+        protected virtual void Process(AlterColumnOperation alterColumnOperation, Context context)
         {
             Check.NotNull(alterColumnOperation, "alterColumnOperation");
             Check.NotNull(context, "context");
 
-            var database = context.SourceDatabase;
-            var table = database.GetTable(alterColumnOperation.TableName);
-            var column = table.GetColumn(alterColumnOperation.NewColumn.Name);
+            var entityType = context.SourceModel.EntityTypes.Single(
+                t => NameGenerator.FullTableName(t) == alterColumnOperation.TableName);
+            var property = entityType.Properties.Single(
+                p => p.SqlServer().Column == alterColumnOperation.NewColumn.Name);
+            var extensions = property.SqlServer();
             var newColumn = alterColumnOperation.NewColumn;
 
             string dataType, newDataType;
-            GetDataTypes(table, column, newColumn, context, out dataType, out newDataType);
+            GetDataTypes(entityType, property, newColumn, context, out dataType, out newDataType);
 
-            var primaryKey = table.PrimaryKey;
+            var primaryKey = entityType.GetPrimaryKey();
             if (primaryKey != null
-                && primaryKey.Columns.Any(c => ReferenceEquals(c, column)))
+                && primaryKey.Properties.Any(p => ReferenceEquals(p, property)))
             {
-                if (context.Operations.Add(new DropPrimaryKeyOperation(primaryKey.Table.Name, primaryKey.Name),
+                if (context.Operations.Add(OperationFactory.DropPrimaryKeyOperation(primaryKey),
                     (x, y) => x.TableName == y.TableName && x.PrimaryKeyName == y.PrimaryKeyName))
                 {
-                    context.Operations.Add(new AddPrimaryKeyOperation(primaryKey));
+                    context.Operations.Add(OperationFactory.AddPrimaryKeyOperation(primaryKey));
                 }
             }
 
             // TODO: Changing the length of a variable-length column used in a UNIQUE constraint is allowed.
-            foreach (var uniqueConstraint in table.UniqueConstraints
-                .Where(uc => uc.Columns.Any(c => ReferenceEquals(c, column))))
+            foreach (var uniqueConstraint in entityType.Keys.Where(k => k != primaryKey)
+                .Where(uc => uc.Properties.Any(p => ReferenceEquals(p, property))))
             {
-                if (context.Operations.Add(new DropUniqueConstraintOperation(uniqueConstraint.Table.Name, uniqueConstraint.Name),
+                if (context.Operations.Add(OperationFactory.DropUniqueConstraintOperation(uniqueConstraint),
                     (x, y) => x.TableName == y.TableName && x.UniqueConstraintName == y.UniqueConstraintName))
                 {
-                    context.Operations.Add(new AddUniqueConstraintOperation(uniqueConstraint));
+                    context.Operations.Add(OperationFactory.AddUniqueConstraintOperation(uniqueConstraint));
                 }
             }
 
-            foreach (var foreignKey in table.ForeignKeys
-                .Where(fk => fk.Columns.Any(c => ReferenceEquals(c, column)))
-                .Concat(database.Tables
+            foreach (var foreignKey in entityType.ForeignKeys
+                .Where(fk => fk.Properties.Any(p => ReferenceEquals(p, property)))
+                .Concat(context.SourceModel.EntityTypes
                     .SelectMany(t => t.ForeignKeys)
-                    .Where(fk => fk.ReferencedColumns.Any(c => ReferenceEquals(c, column)))))
+                    .Where(fk => fk.ReferencedProperties.Any(p => ReferenceEquals(p, property)))))
             {
-                if (context.Operations.Add(new DropForeignKeyOperation(foreignKey.Table.Name, foreignKey.Name),
+                if (context.Operations.Add(OperationFactory.DropForeignKeyOperation(foreignKey),
                     (x, y) => x.TableName == y.TableName && x.ForeignKeyName == y.ForeignKeyName))
                 {
-                    context.Operations.Add(new AddForeignKeyOperation(foreignKey));
+                    context.Operations.Add(OperationFactory.AddForeignKeyOperation(foreignKey));
                 }
             }
 
@@ -141,50 +156,47 @@ namespace Microsoft.Data.Entity.SqlServer
                 || ((string.Equals(dataType, "varchar", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(dataType, "nvarchar", StringComparison.OrdinalIgnoreCase)
                      || string.Equals(dataType, "varbinary", StringComparison.OrdinalIgnoreCase))
-                    && newColumn.MaxLength > column.MaxLength))
+                    && newColumn.MaxLength > property.MaxLength))
             {
-                foreach (var index in table.Indexes
-                    .Where(ix => ix.Columns.Any(c => ReferenceEquals(c, column))))
+                foreach (var index in entityType.Indexes
+                    .Where(ix => ix.Properties.Any(p => ReferenceEquals(p, property))))
                 {
-                    if (context.Operations.Add(new DropIndexOperation(index.Table.Name, index.Name),
+                    if (context.Operations.Add(OperationFactory.DropIndexOperation(index),
                         (x, y) => x.TableName == y.TableName && x.IndexName == y.IndexName))
                     {
-                        context.Operations.Add(new CreateIndexOperation(index));
+                        context.Operations.Add(OperationFactory.CreateIndexOperation(index));
                     }
                 }
             }
 
-            if (column.HasDefault)
+            if (extensions.DefaultValue != null || extensions.DefaultExpression != null)
             {
-                context.Operations.Add(new DropDefaultConstraintOperation(table.Name, column.Name));
+                context.Operations.Add(OperationFactory.DropDefaultConstraintOperation(property));
             }
 
-            if (column.IsTimestamp)
+            if (property.IsConcurrencyToken)
             {
                 context.Operations.Remove(alterColumnOperation);
-                context.Operations.Add(new DropColumnOperation(table.Name, column.Name));
-                context.Operations.Add(new AddColumnOperation(table.Name, newColumn));
+                context.Operations.Add(OperationFactory.DropColumnOperation(property));
+                context.Operations.Add(OperationFactory.AddColumnOperation(property));
             }
         }
 
         protected virtual void GetDataTypes(
-            [NotNull] Table table, [NotNull] Column column, [NotNull] Column newColumn, [NotNull] Context context,
+            [NotNull] IEntityType entityType, [NotNull] IProperty property, [NotNull] Column newColumn, [NotNull] Context context,
             out string dataType, out string newDataType)
         {
-            Check.NotNull(table, "table");
-            Check.NotNull(column, "column");
+            Check.NotNull(entityType, "entityType");
+            Check.NotNull(property, "property");
             Check.NotNull(newColumn, "newColumn");
             Check.NotNull(context, "context");
 
-            var isKey
-                = table.PrimaryKey != null
-                  && table.PrimaryKey.Columns.Contains(column)
-                  || table.UniqueConstraints.SelectMany(k => k.Columns).Contains(column)
-                  || table.ForeignKeys.SelectMany(k => k.Columns).Contains(column);
+            var isKey = property.IsKey() || property.IsForeignKey();
+            var extensions = property.SqlServer();
 
             dataType
                 = TypeMapper.GetTypeMapping(
-                    column.DataType, column.Name, column.ClrType, isKey, column.IsTimestamp)
+                    extensions.ColumnType, extensions.Column, property.PropertyType, isKey, property.IsConcurrencyToken)
                     .StoreTypeName;
             newDataType
                 = TypeMapper.GetTypeMapping(
@@ -192,39 +204,39 @@ namespace Microsoft.Data.Entity.SqlServer
                     .StoreTypeName;
         }
 
-        public class Context
+        protected class Context
         {
-            private readonly DatabaseModel _sourceDatabase;
-            private readonly DatabaseModel _targetDatabase;
             private readonly MigrationOperationCollection _operations;
+            private readonly IModel _sourceModel;
+            private readonly IModel _targetModel;            
 
             public Context(
                 [NotNull] MigrationOperationCollection operations,
-                [NotNull] DatabaseModel sourceDatabase,
-                [NotNull] DatabaseModel targetDatabase)
+                [NotNull] IModel sourceModel,
+                [NotNull] IModel targetModel)
             {
                 Check.NotNull(operations, "operations");
-                Check.NotNull(sourceDatabase, "sourceDatabase");
-                Check.NotNull(targetDatabase, "targetDatabase");
+                Check.NotNull(sourceModel, "sourceModel");
+                Check.NotNull(targetModel, "targetModel");
 
-                _sourceDatabase = sourceDatabase;
-                _targetDatabase = targetDatabase;
                 _operations = operations;
+                _sourceModel = sourceModel;
+                _targetModel = targetModel;                
             }
 
-            public virtual DatabaseModel SourceDatabase
-            {
-                get { return _sourceDatabase; }
-            }
-
-            public virtual DatabaseModel TargetDatabase
-            {
-                get { return _targetDatabase; }
-            }
-
-            public virtual MigrationOperationCollection Operations
+            public MigrationOperationCollection Operations
             {
                 get { return _operations; }
+            }
+
+            public IModel SourceModel
+            {
+                get { return _sourceModel; }
+            }
+
+            public IModel TargetModel
+            {
+                get { return _targetModel; }
             }
         }
     }

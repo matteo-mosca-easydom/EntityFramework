@@ -16,6 +16,7 @@ using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Migrations.Model;
 using Microsoft.Data.Entity.Migrations.Utilities;
 using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 using Microsoft.Data.Entity.Relational.Model;
 using Microsoft.Data.Entity.Storage;
 using Microsoft.Data.Entity.Utilities;
@@ -114,7 +115,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                 UpgradeOperations
                                     = new MigrationOperation[]
                                         {
-                                            new CreateTableOperation(new Table("MyTable1"))
+                                            new CreateTableOperation("MyTable1")
                                         }
                             }
                     }
@@ -140,7 +141,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                 UpgradeOperations
                                     = new MigrationOperation[]
                                         {
-                                            new CreateTableOperation(new Table("MyTable1"))
+                                            new CreateTableOperation("MyTable1")
                                         }
                             },
                         new MigrationInfo("000000000000002_Migration2")
@@ -150,7 +151,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                     = new MigrationOperation[]
                                         {
                                             new AddColumnOperation("MyTable1", new Column("Foo", typeof(string))),
-                                            new CreateTableOperation(new Table("MyTable2"))
+                                            new CreateTableOperation("MyTable2")
                                         }
                             }
                     }
@@ -187,7 +188,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                     = new MigrationOperation[]
                                         {
                                             new AddColumnOperation("MyTable1", new Column("Foo", typeof(string))),
-                                            new CreateTableOperation(new Table("MyTable2"))
+                                            new CreateTableOperation("MyTable2")
                                         }
                             }
                     }
@@ -227,7 +228,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                     = new MigrationOperation[]
                                         {
                                             new AddColumnOperation("MyTable1", new Column("Foo", typeof(string))),
-                                            new CreateTableOperation(new Table("MyTable2"))
+                                            new CreateTableOperation("MyTable2")
                                         }
                             },
                         new MigrationInfo("000000000000004_Migration4")
@@ -278,7 +279,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                     = new MigrationOperation[]
                                         {
                                             new AddColumnOperation("MyTable1", new Column("Foo", typeof(string))),
-                                            new CreateTableOperation(new Table("MyTable2"))
+                                            new CreateTableOperation("MyTable2")
                                         }
                             },
                         new MigrationInfo("000000000000004_Migration4")
@@ -329,7 +330,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                     = new MigrationOperation[]
                                         {
                                             new AddColumnOperation("MyTable1", new Column("Foo", typeof(string))),
-                                            new CreateTableOperation(new Table("MyTable2"))
+                                            new CreateTableOperation("MyTable2")
                                         }
                             },
                         new MigrationInfo("000000000000004_Migration4")
@@ -583,7 +584,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                                 UpgradeOperations
                                     = new MigrationOperation[]
                                         {
-                                            new CreateTableOperation(new Table("MyTable1"))
+                                            new CreateTableOperation("MyTable1")
                                         }
                             }
                     };
@@ -1241,7 +1242,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
                 new Mock<Migrator>(
                     MockHistoryRepository(contextConfiguration, databaseMigrations, historyRepositoryExists).Object,
                     MockMigrationAssembly(contextConfiguration, localMigrations).Object,
-                    new TestModelDiffer(),
+                    CreateModelDiffer(),
                     MockMigrationOperationSqlGeneratorFactory().Object,
                     new Mock<SqlGenerator>().Object,
                     sqlStatementExecutorMock.Object,
@@ -1331,7 +1332,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
             mock.Setup(mosgf => mosgf.Create())
                 .Returns(MockMigrationOperationSqlGenerator().Object);
 
-            mock.Setup(mosgf => mosgf.Create(It.IsAny<DatabaseModel>()))
+            mock.Setup(mosgf => mosgf.Create(It.IsAny<IModel>()))
                 .Returns(MockMigrationOperationSqlGenerator().Object);
 
             return mock;
@@ -1580,30 +1581,15 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
             }
         }
 
-        private class TestDatabaseBuilder : DatabaseBuilder
+        private static ModelDiffer CreateModelDiffer()
         {
-            public TestDatabaseBuilder()
-                : base(new RelationalTypeMapper())
-            {
-            }
+            var extensionProvider = new RelationalMetadataExtensionProvider();
+            var nameGenerator = new RelationalNameGenerator(extensionProvider);
+            var typeMapper = new RelationalTypeMapper();
+            var operationFactory = new MigrationOperationFactory(extensionProvider, nameGenerator);
+            var operationProcessor = new MigrationOperationProcessor(extensionProvider, nameGenerator, typeMapper, operationFactory);
 
-            protected override Sequence BuildSequence(IProperty property)
-            {
-                return null;
-            }
-        }
-
-        private class TestModelDiffer : ModelDiffer
-        {
-            public TestModelDiffer()
-                : base(new TestDatabaseBuilder())
-            {
-            }
-
-            protected override string GetSequenceName(Column column)
-            {
-                return null;
-            }
+            return new ModelDiffer(extensionProvider, nameGenerator, typeMapper, operationFactory, operationProcessor);
         }
 
         #endregion

@@ -17,7 +17,6 @@ namespace Microsoft.Data.Entity.Relational.Model
     [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class Column : MetadataBase
     {
-        private Table _table;
         private bool _isNullable = true;
 
         public Column([NotNull] string name, [NotNull] string dataType)
@@ -37,23 +36,6 @@ namespace Microsoft.Data.Entity.Relational.Model
             Name = name;
             ClrType = clrType;
             DataType = dataType;
-        }
-
-        public Column([NotNull] Column source)
-        {
-            Copy(source);
-        }
-
-        public virtual Table Table
-        {
-            get { return _table; }
-
-            [param: CanBeNull]
-            internal set
-            {
-                Contract.Assert((value == null) != (_table == null));
-                _table = value;
-            }
         }
 
         public virtual string Name { get; [param: CanBeNull] set; }
@@ -95,42 +77,10 @@ namespace Microsoft.Data.Entity.Relational.Model
 
         public virtual bool? IsUnicode { get; set; }
 
-        public virtual void Copy([NotNull] Column source)
-        {
-            Check.NotNull(source, "source");
-
-            Name = source.Name;
-            ClrType = source.ClrType;
-            DataType = source.DataType;
-            IsNullable = source.IsNullable;
-            DefaultValue = source.DefaultValue;
-            DefaultSql = source.DefaultSql;
-            GenerateValueOnAdd = source.GenerateValueOnAdd;
-            IsComputed = source.IsComputed;
-            IsTimestamp = source.IsTimestamp;
-            MaxLength = source.MaxLength;
-            Precision = source.Precision;
-            Scale = source.Scale;
-            IsFixedLength = source.IsFixedLength;
-            IsUnicode = source.IsUnicode;
-
-            foreach (var annotation in source.Annotations)
-            {
-                this[annotation.Name] = annotation.Value;
-            }
-        }
-
-        public virtual Column Clone([NotNull] CloneContext cloneContext)
-        {
-            Check.NotNull(cloneContext, "cloneContext");
-
-            return (Column)cloneContext.GetOrAdd(this, () => new Column(this));
-        }
-
         [UsedImplicitly]
         private string DebuggerDisplay
         {
-            get { return string.Format("{0}[{1}]", Table.Name, Name); }
+            get { return string.Format("{0}", Name); }
         }
     }
 }

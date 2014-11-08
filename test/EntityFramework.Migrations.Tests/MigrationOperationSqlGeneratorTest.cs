@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Open Technologies, Inc. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System.Linq;
+using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Model;
 using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 using Microsoft.Data.Entity.Relational.Model;
 using Moq;
 using Xunit;
@@ -34,7 +35,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
             Assert.Equal(
                 @"CREATE SEQUENCE ""dbo"".""MySequence"" AS bigint START WITH 0 INCREMENT BY 1",
                 Generate(
-                    new CreateSequenceOperation(new Sequence("dbo.MySequence", typeof(long), 0, 1))).Sql);
+                    new CreateSequenceOperation("dbo.MySequence", 0, 1)).Sql);
         }
 
         [Fact]
@@ -56,19 +57,20 @@ namespace Microsoft.Data.Entity.Migrations.Tests
         [Fact]
         public void Generate_when_create_table_operation()
         {
-            Column foo, bar;
-            var table = new Table(
-                "dbo.MyTable",
-                new[]
+            var model = new Metadata.Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
                     {
-                        foo = new Column("Foo", "int") { IsNullable = false, DefaultValue = 5 },
-                        bar = new Column("Bar", "int") { IsNullable = true }
-                    })
-                {
-                    PrimaryKey = new PrimaryKey("MyPK", new[] { foo, bar }, isClustered: false)
-                };
-            var database = new DatabaseModel();
-            database.AddTable(table);
+                        b.Property<int>("Foo").ForRelational().DefaultValue(5);
+                        b.Property<int>("Foo").Metadata.IsNullable = false;
+                        b.Property<int>("Bar").ForRelational().DefaultValue(5);
+                        b.Property<int>("Bar").Metadata.IsNullable = true;
+                        b.ForRelational().Table("MyTable", "dbo");
+                        b.Key("Foo", "Bar").ForRelational().Name("MyPK");
+                    });
+
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
                 @"CREATE TABLE ""dbo"".""MyTable"" (
@@ -76,29 +78,30 @@ namespace Microsoft.Data.Entity.Migrations.Tests
     ""Bar"" int,
     CONSTRAINT ""MyPK"" PRIMARY KEY (""Foo"", ""Bar"")
 )",
-                Generate(new CreateTableOperation(table), database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
         public void Generate_when_create_table_with_unique_constraints()
         {
-            Column foo, bar, c1, c2;
-            var table = new Table(
-                "dbo.MyTable",
-                new[]
-                    {
-                        foo = new Column("Foo", "int") { IsNullable = false, DefaultValue = 5 },
-                        bar = new Column("Bar", "int") { IsNullable = true },
-                        c1 = new Column("C1", "varchar"),
-                        c2 = new Column("C2", "varchar")
-                    })
+            var model = new Metadata.Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
                 {
-                    PrimaryKey = new PrimaryKey("MyPK", new[] { foo }, isClustered: false)
-                };
-            table.AddUniqueConstraint(new UniqueConstraint("MyUC0", new[] { c1 }));
-            table.AddUniqueConstraint(new UniqueConstraint("MyUC1", new[] { bar, c2 }));
-            var database = new DatabaseModel();
-            database.AddTable(table);
+                    b.Property<int>("Foo").ForRelational().DefaultValue(5);
+                    b.Property<int>("Foo").Metadata.IsNullable = false;
+                    b.Property<int>("Bar").ForRelational().DefaultValue(5);
+                    b.Property<int>("Bar").Metadata.IsNullable = true;
+                    b.Property<string>("C1");
+                    b.Property<string>("C2");
+                    b.ForRelational().Table("MyTable", "dbo");
+                    b.Key("Foo").ForRelational().Name("MyPK");
+                    b.Key("C1").ForRelational().Name("MyUC0");
+                    b.Key("Bar", "C2").ForRelational().Name("MyUC1");
+                });
+
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
                 @"CREATE TABLE ""dbo"".""MyTable"" (
@@ -110,7 +113,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
     CONSTRAINT ""MyUC0"" UNIQUE (""C1""),
     CONSTRAINT ""MyUC1"" UNIQUE (""Bar"", ""C2"")
 )",
-                Generate(new CreateTableOperation(table), database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
@@ -124,14 +127,23 @@ namespace Microsoft.Data.Entity.Migrations.Tests
         [Fact]
         public void Generate_when_add_column_operation()
         {
-            var database = new DatabaseModel();
-            database.AddTable(new Table("dbo.MyTable"));
+            var model = new Metadata.Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
+                    {
+                        b.Property<int>("Id");
+                        b.Property<int>("Bar").ForRelational().DefaultValue(5);
+                        b.Property<int>("Bar").Metadata.IsNullable = false;
+                        b.Key("Id");
+                        b.ForRelational().Table("MyTable", "dbo");
+                    });
 
-            var column = new Column("Bar", "int") { IsNullable = false, DefaultValue = 5 };
+            var operation = OperationFactory().AddColumnOperation(model.GetEntityType("E").GetProperty("Bar"));
 
             Assert.Equal(
                 @"ALTER TABLE ""dbo"".""MyTable"" ADD ""Bar"" int NOT NULL DEFAULT 5",
-                Generate(new AddColumnOperation("dbo.MyTable", column), database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
@@ -146,43 +158,47 @@ namespace Microsoft.Data.Entity.Migrations.Tests
         [Fact]
         public void Generate_when_alter_column_operation_with_nullable()
         {
-            var database = new DatabaseModel();
-            var table
-                = new Table(
-                    "dbo.MyTable",
-                    new[]
-                        {
-                            new Column("Foo", typeof(int)) { IsNullable = false }
-                        });
-            database.AddTable(table);
+            var model = new Metadata.Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
+                {
+                    b.Property<int>("Id");
+                    b.Property<int>("Foo");
+                    b.Property<int>("Foo").Metadata.IsNullable = true;
+                    b.Key("Id");
+                    b.ForRelational().Table("MyTable", "dbo");
+                });
+
+            var operation = OperationFactory().AlterColumnOperation(
+                model.GetEntityType("E").GetProperty("Foo"), isDestructiveChange: false);
 
             Assert.Equal(
                 @"ALTER TABLE ""dbo"".""MyTable"" ALTER COLUMN ""Foo"" int NULL",
-                Generate(
-                    new AlterColumnOperation("dbo.MyTable",
-                        new Column("Foo", "int") { IsNullable = true }, isDestructiveChange: false),
-                    database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
         public void Generate_when_alter_column_operation_with_not_nullable()
         {
-            var database = new DatabaseModel();
-            var table
-                = new Table(
-                    "dbo.MyTable",
-                    new[]
-                        {
-                            new Column("Foo", typeof(int)) { IsNullable = true }
-                        });
-            database.AddTable(table);
+            var model = new Metadata.Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
+                {
+                    b.Property<int>("Id");
+                    b.Property<int>("Foo");
+                    b.Property<int>("Foo").Metadata.IsNullable = false;
+                    b.Key("Id");
+                    b.ForRelational().Table("MyTable", "dbo");
+                });
+
+            var operation = OperationFactory().AlterColumnOperation(
+                model.GetEntityType("E").GetProperty("Foo"), isDestructiveChange: false);
 
             Assert.Equal(
                 @"ALTER TABLE ""dbo"".""MyTable"" ALTER COLUMN ""Foo"" int NOT NULL",
-                Generate(
-                    new AlterColumnOperation("dbo.MyTable",
-                        new Column("Foo", "int") { IsNullable = false }, isDestructiveChange: false),
-                    database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
@@ -359,16 +375,24 @@ namespace Microsoft.Data.Entity.Migrations.Tests
             Assert.Equal("foo''bar", sqlGenerator.Object.EscapeLiteral("foo'bar"));
         }
 
-        private static MigrationOperationSqlGenerator CreateSqlGenerator(DatabaseModel database = null)
+        private static MigrationOperationSqlGenerator CreateSqlGenerator(IModel targetModel = null)
         {
             var sqlGenerator = new Mock<MigrationOperationSqlGenerator>(new RelationalTypeMapper()) { CallBase = true }.Object;
-            sqlGenerator.Database = database ?? new DatabaseModel();
+            sqlGenerator.TargetModel = targetModel ?? new Metadata.Model();
             return sqlGenerator;
         }
 
-        private static SqlStatement Generate(MigrationOperation migrationOperation, DatabaseModel database = null)
+        private static SqlStatement Generate(MigrationOperation migrationOperation, IModel database = null)
         {
             return CreateSqlGenerator(database).Generate(migrationOperation);
+        }
+
+        private static MigrationOperationFactory OperationFactory()
+        {
+            var extensionProvider = new RelationalMetadataExtensionProvider();
+            var nameGenerator = new RelationalNameGenerator(extensionProvider);
+
+            return new MigrationOperationFactory(extensionProvider, nameGenerator);
         }
     }
 }

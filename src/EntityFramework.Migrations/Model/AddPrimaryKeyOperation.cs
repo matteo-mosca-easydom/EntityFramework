@@ -33,16 +33,6 @@ namespace Microsoft.Data.Entity.Migrations.Model
             _isClustered = isClustered;
         }
 
-        public AddPrimaryKeyOperation([NotNull] PrimaryKey primaryKey)
-        {
-            Check.NotNull(primaryKey, "primaryKey");
-
-            _tableName = primaryKey.Table.Name;
-            _primaryKeyName = primaryKey.Name;
-            _columnNames = primaryKey.Columns.Select(c => c.Name).ToArray();
-            _isClustered = primaryKey.IsClustered;
-        }
-
         public virtual SchemaQualifiedName TableName
         {
             get { return _tableName; }

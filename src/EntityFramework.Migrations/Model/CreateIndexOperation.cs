@@ -36,17 +36,6 @@ namespace Microsoft.Data.Entity.Migrations.Model
             _isClustered = isClustered;
         }
 
-        public CreateIndexOperation([NotNull] Index index)
-        {
-            Check.NotNull(index, "index");
-
-            _tableName = index.Table.Name;
-            _indexName = index.Name;
-            _columnNames = index.Columns.Select(c => c.Name).ToArray();
-            _isUnique = index.IsUnique;
-            _isClustered = index.IsClustered;
-        }
-
         public virtual SchemaQualifiedName TableName
         {
             get { return _tableName; }

@@ -30,15 +30,6 @@ namespace Microsoft.Data.Entity.Migrations.Model
             _columnNames = columnNames;
         }
 
-        public AddUniqueConstraintOperation([NotNull] UniqueConstraint uniqueConstraint)
-        {
-            Check.NotNull(uniqueConstraint, "uniqueConstraint");
-
-            _tableName = uniqueConstraint.Table.Name;
-            _uniqueConstraintName = uniqueConstraint.Name;
-            _columnNames = uniqueConstraint.Columns.Select(c => c.Name).ToArray();
-        }
-
         public virtual SchemaQualifiedName TableName
         {
             get { return _tableName; }

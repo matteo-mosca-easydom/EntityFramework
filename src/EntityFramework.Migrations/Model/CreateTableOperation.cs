@@ -25,34 +25,6 @@ namespace Microsoft.Data.Entity.Migrations.Model
             _tableName = tableName;
         }
 
-        public CreateTableOperation([NotNull] Table table)
-        {
-            Check.NotNull(table, "table");
-
-            _tableName = table.Name;
-            _columns = table.Columns.ToList();
-
-            if (table.PrimaryKey != null)
-            {
-                _primaryKey = new AddPrimaryKeyOperation(table.PrimaryKey);
-            }
-
-            foreach (var uniqueConstraint in table.UniqueConstraints)
-            {
-                _uniqueConstraints.Add(new AddUniqueConstraintOperation(uniqueConstraint));
-            }
-
-            foreach (var foreignKey in table.ForeignKeys)
-            {
-                _foreignKeys.Add(new AddForeignKeyOperation(foreignKey));
-            }
-
-            foreach (var index in table.Indexes)
-            {
-                _indexes.Add(new CreateIndexOperation(index));
-            }
-        }
-
         public virtual SchemaQualifiedName TableName
         {
             get { return _tableName; }

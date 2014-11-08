@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
+using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Model;
 using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.SqlServer.Metadata;
 using Xunit;
 
 namespace Microsoft.Data.Entity.SqlServer.Tests
@@ -35,7 +37,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         {
             Assert.Equal(
                 @"CREATE SEQUENCE [dbo].[MySequence] AS bigint START WITH 0 INCREMENT BY 1",
-                Generate(new CreateSequenceOperation(new Sequence("dbo.MySequence", typeof(long), 0, 1))).Sql);
+                Generate(new CreateSequenceOperation("dbo.MySequence", 0, 1)).Sql);
         }
 
         [Fact]
@@ -73,18 +75,20 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         [Fact]
         public void Generate_when_create_table_operation()
         {
-            Column foo, bar;
-            var table = new Table("dbo.MyTable",
-                new[]
-                    {
-                        foo = new Column("Foo", "int") { IsNullable = false, DefaultValue = 5 },
-                        bar = new Column("Bar", "int") { IsNullable = true }
-                    })
+            var model = new Entity.Metadata.Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
                 {
-                    PrimaryKey = new PrimaryKey("MyPK", new[] { foo, bar }, isClustered: false)
-                };
-            var database = new DatabaseModel();
-            database.AddTable(table);
+                    b.Property<int>("Foo").ForRelational().DefaultValue(5);
+                    b.Property<int>("Foo").Metadata.IsNullable = false;
+                    b.Property<int>("Bar");
+                    b.Property<int>("Bar").Metadata.IsNullable = true;
+                    b.ForRelational().Table("MyTable", "dbo");
+                    b.Key("Foo", "Bar").ForRelational().Name("MyPK");
+                });
+
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
                 @"CREATE TABLE [dbo].[MyTable] (
@@ -92,25 +96,24 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
     [Bar] int,
     CONSTRAINT [MyPK] PRIMARY KEY NONCLUSTERED ([Foo], [Bar])
 )",
-                Generate(new CreateTableOperation(table), database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
         public void Generate_when_create_table_operation_with_Identity_key()
         {
-            Column foo, bar;
-            var table = new Table(
-                "dbo.MyTable",
-                new[]
-                    {
-                        foo = new Column("Foo", "int") { IsNullable = false, ClrType = typeof(int), GenerateValueOnAdd = true },
-                        bar = new Column("Bar", "int") { IsNullable = true }
-                    })
+            var model = new Entity.Metadata.Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
                 {
-                    PrimaryKey = new PrimaryKey("MyPK", new[] { foo }, isClustered: false)
-                };
-            var database = new DatabaseModel();
-            database.AddTable(table);
+                    b.Property<int>("Foo").GenerateValueOnAdd().Metadata.IsNullable = false;
+                    b.Property<int>("Bar").Metadata.IsNullable = true;
+                    b.ForRelational().Table("MyTable", "dbo");
+                    b.Key("Foo").ForRelational().Name("MyPK");
+                });
+
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
                 @"CREATE TABLE [dbo].[MyTable] (
@@ -118,7 +121,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
     [Bar] int,
     CONSTRAINT [MyPK] PRIMARY KEY NONCLUSTERED ([Foo])
 )",
-                Generate(new CreateTableOperation(table), database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
@@ -148,46 +151,53 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         [Fact]
         public void Generate_when_add_column_operation()
         {
-            var database = new DatabaseModel();
-            database.AddTable(new Table("dbo.MyTable"));
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
+                    {
+                        b.Property<int>("Id");
+                        b.Property<int>("Bar").ForSqlServer().DefaultValue(5);
+                        b.Property<int>("Bar").Metadata.IsNullable = false;
+                        b.ForRelational().Table("MyTable", "dbo");
+                        b.Key("Id");
+                    });
 
-            var column = new Column("Bar", "int") { IsNullable = false, DefaultValue = 5 };
+            var operation = OperationFactory().AddColumnOperation(model.GetEntityType("E").GetProperty("Bar"));
 
             Assert.Equal(
                 @"ALTER TABLE [dbo].[MyTable] ADD [Bar] int NOT NULL DEFAULT 5",
-                Generate(new AddColumnOperation("dbo.MyTable", column), database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
         public void Generate_when_drop_column_operation()
         {
-            var database = new DatabaseModel();
-            database.AddTable(new Table("dbo.MyTable", new[] { new Column("Foo", typeof(int)) }));
-
             Assert.Equal(
                 @"ALTER TABLE [dbo].[MyTable] DROP COLUMN [Foo]",
-                Generate(new DropColumnOperation("dbo.MyTable", "Foo"), database).Sql);
+                Generate(new DropColumnOperation("dbo.MyTable", "Foo"), new Model()).Sql);
         }
 
         [Fact]
         public void Generate_when_alter_column_operation()
         {
-            var database = new DatabaseModel();
-            var table
-                = new Table(
-                    "dbo.MyTable",
-                    new[]
-                        {
-                            new Column("Foo", typeof(int)) { IsNullable = true }
-                        });
-            database.AddTable(table);
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
+                {
+                    b.Property<int>("Id");
+                    b.Property<int>("Foo").Metadata.IsNullable = false;
+                    b.ForRelational().Table("MyTable", "dbo");
+                    b.Key("Id");
+                });
+
+            var operation = OperationFactory().AlterColumnOperation(
+                model.GetEntityType("E").GetProperty("Foo"), isDestructiveChange: false);
 
             Assert.Equal(
                 @"ALTER TABLE [dbo].[MyTable] ALTER COLUMN [Foo] int NOT NULL",
-                Generate(
-                    new AlterColumnOperation("dbo.MyTable", new Column("Foo", typeof(int)) { IsNullable = false },
-                        isDestructiveChange: false),
-                    database).Sql);
+                Generate(operation, model).Sql);
         }
 
         [Fact]
@@ -284,184 +294,151 @@ EXECUTE('ALTER TABLE [dbo].[MyTable] DROP CONSTRAINT ""' + @var0 + '""')",
         [Fact]
         public void GenerateDataType_for_string_thats_not_a_key()
         {
-            Assert.Equal(
-                "nvarchar(max)",
-                GenerateDataType(CreateColumn(typeof(string))));
+            Assert.Equal("nvarchar(max)", GenerateDataType<string>());
         }
 
         [Fact]
         public void GenerateDataType_for_string_key()
         {
-            var column = new Column("Username", typeof(string));
-            var table = new Table("dbo.Users");
-            table.PrimaryKey = new PrimaryKey("PK_Users", new List<Column> { column }.AsReadOnly());
-            table.AddColumn(column);
-
-            Assert.Equal("nvarchar(128)", GenerateDataType(column));
+            Assert.Equal("nvarchar(128)", GenerateDataType<string>(isKey: true));
         }
 
         [Fact]
         public void GenerateDataType_for_DateTime()
         {
-            Assert.Equal(
-                "datetime2",
-                GenerateDataType(CreateColumn(typeof(DateTime))));
+            Assert.Equal("datetime2", GenerateDataType<DateTime>());
         }
 
         [Fact]
         public void GenerateDataType_for_decimal()
         {
-            Assert.Equal(
-                "decimal(18, 2)",
-                GenerateDataType(CreateColumn(typeof(decimal))));
+            Assert.Equal("decimal(18, 2)", GenerateDataType<decimal>());
         }
 
         [Fact]
         public void GenerateDataType_for_Guid()
         {
-            Assert.Equal(
-                "uniqueidentifier",
-                GenerateDataType(CreateColumn(typeof(Guid))));
+            Assert.Equal("uniqueidentifier", GenerateDataType<Guid>());
         }
 
         [Fact]
         public void GenerateDataType_for_bool()
         {
-            Assert.Equal(
-                "bit",
-                GenerateDataType(CreateColumn(typeof(bool))));
+            Assert.Equal("bit", GenerateDataType<bool>());
         }
 
         [Fact]
         public void GenerateDataType_for_byte()
         {
-            Assert.Equal(
-                "tinyint",
-                GenerateDataType(CreateColumn(typeof(byte))));
+            Assert.Equal("tinyint", GenerateDataType<byte>());
         }
 
         [Fact]
         public void GenerateDataType_for_char()
         {
-            Assert.Equal(
-                "int",
-                GenerateDataType(CreateColumn(typeof(char))));
+            Assert.Equal("int", GenerateDataType<int>());
         }
 
         [Fact]
         public void GenerateDataType_for_double()
         {
-            Assert.Equal(
-                "float",
-                GenerateDataType(CreateColumn(typeof(double))));
+            Assert.Equal("float", GenerateDataType<double>());
         }
 
         [Fact]
         public void GenerateDataType_for_short()
         {
-            Assert.Equal(
-                "smallint",
-                GenerateDataType(CreateColumn(typeof(short))));
+            Assert.Equal("smallint", GenerateDataType<short>());
         }
 
         [Fact]
         public void GenerateDataType_for_long()
         {
-            Assert.Equal(
-                "bigint",
-                GenerateDataType(CreateColumn(typeof(long))));
+            Assert.Equal("bigint", GenerateDataType<long>());
         }
 
         [Fact]
         public void GenerateDataType_for_sbyte()
         {
-            Assert.Equal(
-                "smallint",
-                GenerateDataType(CreateColumn(typeof(sbyte))));
+            Assert.Equal("smallint", GenerateDataType<sbyte>());
         }
 
         [Fact]
         public void GenerateDataType_for_float()
         {
-            Assert.Equal(
-                "real",
-                GenerateDataType(CreateColumn(typeof(float))));
+            Assert.Equal("real", GenerateDataType<float>());
         }
 
         [Fact]
         public void GenerateDataType_for_ushort()
         {
-            Assert.Equal(
-                "int",
-                GenerateDataType(CreateColumn(typeof(ushort))));
+            Assert.Equal("int", GenerateDataType<ushort>());
         }
 
         [Fact]
         public void GenerateDataType_for_uint()
         {
-            Assert.Equal(
-                "bigint",
-                GenerateDataType(CreateColumn(typeof(uint))));
+            Assert.Equal("bigint", GenerateDataType<uint>());
         }
 
         [Fact]
         public void GenerateDataType_for_ulong()
         {
-            Assert.Equal(
-                "numeric(20, 0)",
-                GenerateDataType(CreateColumn(typeof(ulong))));
+            Assert.Equal("numeric(20, 0)", GenerateDataType<ulong>());
         }
 
         [Fact]
         public void GenerateDataType_for_DateTimeOffset()
         {
-            Assert.Equal(
-                "datetimeoffset",
-                GenerateDataType(CreateColumn(typeof(DateTimeOffset))));
+            Assert.Equal("datetimeoffset", GenerateDataType<DateTimeOffset>());
         }
 
         [Fact]
         public void GenerateDataType_for_byte_array_that_is_not_a_concurrency_token_or_a_primary_key()
         {
-            Assert.Equal(
-                "varbinary(max)",
-                GenerateDataType(CreateColumn(typeof(byte[]))));
+            Assert.Equal("varbinary(max)", GenerateDataType<byte[]>());
         }
 
         [Fact]
         public void GenerateDataType_for_byte_array_key()
         {
-            var column = new Column("Username", typeof(byte[]));
-            var table = new Table("dbo.Users") { PrimaryKey = new PrimaryKey("PK_Users", new[] { column }) };
-            table.AddColumn(column);
-
-            Assert.Equal("varbinary(128)", GenerateDataType(column));
+            Assert.Equal("varbinary(128)", GenerateDataType<byte[]>(isKey: true));
         }
 
         [Fact]
         public void GenerateDataType_for_byte_array_concurrency_token()
         {
-            var column = new Column("Username", typeof(byte[])) { IsTimestamp = true };
-            var table = new Table("dbo.Users");
-            table.AddColumn(column);
-
-            Assert.Equal("rowversion", GenerateDataType(column));
+            Assert.Equal("rowversion", GenerateDataType<byte[]>(isKey: false, isConcurrencyToken: true));
         }
 
-        private static Column CreateColumn(Type clrType)
+        private static string GenerateDataType<T>(bool isKey = false, bool isConcurrencyToken = false)
         {
-            var column = new Column("Username", clrType);
-            var table = new Table("dbo.Users");
-            table.AddColumn(column);
-            return column;
-        }
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
+                {
+                    b.Property<T>("P");
+                    if (isKey)
+                    {
+                        b.Key("P");
+                    }
+                    if (isConcurrencyToken)
+                    {
+                        b.Property<T>("P").Metadata.IsConcurrencyToken = true;
+                    }
+                });
 
-        private static string GenerateDataType(Column column)
-        {
+            var property = model.GetEntityType("E").GetProperty("P");
             var sqlGenerator = CreateSqlGenerator();
-            sqlGenerator.Database = new DatabaseModel();
-            sqlGenerator.Database.AddTable(column.Table);
-            return sqlGenerator.GenerateDataType(column.Table, column);
+
+            sqlGenerator.TargetModel = property.EntityType.Model;
+
+            return sqlGenerator.GenerateDataType(
+                new SchemaQualifiedName(
+                    property.EntityType.SqlServer().Table,
+                    property.EntityType.SqlServer().Schema),
+                OperationFactory().Column(property));
         }
 
         [Fact]
@@ -496,18 +473,29 @@ EXECUTE('ALTER TABLE [dbo].[MyTable] DROP CONSTRAINT ""' + @var0 + '""')",
             Assert.Equal("foo''bar", sqlGenerator.EscapeLiteral("foo'bar"));
         }
 
-        private static SqlStatement Generate(MigrationOperation migrationOperation, DatabaseModel database = null)
+        private static SqlStatement Generate(MigrationOperation migrationOperation, IModel targetModel = null)
         {
-            return CreateSqlGenerator(database).Generate(migrationOperation);
+            return CreateSqlGenerator(targetModel).Generate(migrationOperation);
         }
 
-        private static SqlServerMigrationOperationSqlGenerator CreateSqlGenerator(DatabaseModel database = null)
+        private static SqlServerMigrationOperationSqlGenerator CreateSqlGenerator(IModel targetModel = null)
         {
             return
-                new SqlServerMigrationOperationSqlGenerator(new SqlServerTypeMapper())
+                new SqlServerMigrationOperationSqlGenerator(
+                    new RelationalNameGenerator(
+                        new SqlServerMetadataExtensionProvider()), 
+                    new SqlServerTypeMapper())
                     {
-                        Database = database ?? new DatabaseModel()
+                        TargetModel = targetModel ?? new Model()
                     };
+        }
+
+        private static MigrationOperationFactory OperationFactory()
+        {
+            var extensionProvider = new RelationalMetadataExtensionProvider();
+            var nameGenerator = new RelationalNameGenerator(extensionProvider);
+
+            return new MigrationOperationFactory(extensionProvider, nameGenerator);
         }
     }
 }

@@ -8,6 +8,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 using Microsoft.Data.Entity.Relational.Model;
 using Moq;
 using Xunit;
@@ -25,7 +26,7 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
                     = new MyMigrationScaffolder(
                         context.Configuration,
                         MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateEmptyMigration,
@@ -44,7 +45,7 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
                     = new MyMigrationScaffolder(
                         context.Configuration,
                         MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateMigration,
@@ -63,7 +64,7 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
                     = new MyMigrationScaffolder(
                         context.Configuration,
                         MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateMigrationWithForeignKeys,
@@ -82,7 +83,7 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
                     = new MyMigrationScaffolder(
                         context.Configuration,
                         MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateMigrationWithCompositeKeys,
@@ -930,30 +931,15 @@ namespace MyNamespace
             }
         }
 
-        private class TestDatabaseBuilder : DatabaseBuilder
+        private static ModelDiffer CreateModelDiffer()
         {
-            public TestDatabaseBuilder()
-                : base(new RelationalTypeMapper())
-            {
-            }
+            var extensionProvider = new RelationalMetadataExtensionProvider();
+            var nameGenerator = new RelationalNameGenerator(extensionProvider);
+            var typeMapper = new RelationalTypeMapper();
+            var operationFactory = new MigrationOperationFactory(extensionProvider, nameGenerator);
+            var operationProcessor = new MigrationOperationProcessor(extensionProvider, nameGenerator, typeMapper, operationFactory);
 
-            protected override Sequence BuildSequence(IProperty property)
-            {
-                return null;
-            }
-        }
-
-        private class TestModelDiffer : ModelDiffer
-        {
-            public TestModelDiffer()
-                : base(new TestDatabaseBuilder())
-            {
-            }
-
-            protected override string GetSequenceName(Column column)
-            {
-                return null;
-            }
+            return new ModelDiffer(extensionProvider, nameGenerator, typeMapper, operationFactory, operationProcessor);
         }
     }
 }

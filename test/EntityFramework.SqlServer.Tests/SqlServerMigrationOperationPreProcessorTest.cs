@@ -2,13 +2,13 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Collections.Generic;
-using System.Linq;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Model;
+using Microsoft.Data.Entity.Relational;
 using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.SqlServer.Metadata;
 using Xunit;
-using Index = Microsoft.Data.Entity.Relational.Model.Index;
 
 namespace Microsoft.Data.Entity.SqlServer.Tests
 {
@@ -17,15 +17,14 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         [Fact]
         public void Visit_with_alter_column_operation_and_timestamp_column()
         {
-            var database = new DatabaseModel();
-            var column0
-                = new Column("Id", typeof(byte[]))
+            var modelBuilder = new BasicModelBuilder();
+            modelBuilder.Entity("A",
+                b =>
                     {
-                        IsTimestamp = true
-                    };
-            var column1 = new Column("P", typeof(string));
-            var table = new Table("A", new[] { column0, column1 });
-            database.AddTable(table);
+                        b.Property<byte[]>("Id").ConcurrencyToken();
+                        b.Property<string>("P");
+                        b.Key("Id");
+                    });
 
             var alterColumnOperation
                 = new AlterColumnOperation(
@@ -35,7 +34,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(database, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(2, operations.Count);
 
@@ -70,7 +69,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(3, operations.Count);
 
@@ -107,7 +106,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(3, operations.Count);
 
@@ -150,7 +149,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(3, operations.Count);
 
@@ -194,7 +193,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(5, operations.Count);
 
@@ -234,7 +233,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(3, operations.Count);
 
@@ -253,16 +252,14 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         [Fact]
         public void Visit_with_alter_column_does_not_reset_indexes_if_same_type_but_smaller_max_length()
         {
-            var database = new DatabaseModel();
-            var column
-                = new Column("Id", typeof(string))
-                    {
-                        MaxLength = 10
-                    };
-            var table = new Table("A", new[] { column });
-            var index = new Index("IX", new[] { column });
-            database.AddTable(table);
-            table.AddIndex(index);
+            var modelBuilder = new BasicModelBuilder();
+            modelBuilder.Entity("A",
+                b =>
+                {
+                    b.Property<string>("Id").MaxLength(10);
+                    b.Key("Id");
+                    b.Index("Id").ForSqlServer().Name("IX");
+                });
 
             var alterColumnOperation
                 = new AlterColumnOperation(
@@ -275,7 +272,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(database, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(1, operations.Count);
 
@@ -302,7 +299,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(alterColumnOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(2, operations.Count);
 
@@ -346,7 +343,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             operationCollection.Add(alterColumnOperation0);
             operationCollection.Add(alterColumnOperation1);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(14, operations.Count);
 
@@ -417,7 +414,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(dropColumnOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(2, operations.Count);
 
@@ -457,7 +454,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             var operationCollection = new MigrationOperationCollection();
             operationCollection.Add(dropTableOperation);
 
-            var operations = PreProcess(modelBuilder, operationCollection);
+            var operations = PreProcess(modelBuilder.Model, operationCollection);
 
             Assert.Equal(2, operations.Count);
 
@@ -471,14 +468,19 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             Assert.Same(dropTableOperation, operations[1]);
         }
 
-        private static IReadOnlyList<MigrationOperation> PreProcess(BasicModelBuilder sourceModelBuilder, MigrationOperationCollection operations)
+        private static IReadOnlyList<MigrationOperation> PreProcess(IModel sourceModel, MigrationOperationCollection operations)
         {
-            return PreProcess(new SqlServerDatabaseBuilder(new SqlServerTypeMapper()).GetDatabase(sourceModelBuilder.Model), operations);
+            return CreatePreProcessor().Process(operations, sourceModel, new Model());
         }
 
-        private static IReadOnlyList<MigrationOperation> PreProcess(DatabaseModel sourceDatabase, MigrationOperationCollection operations)
+        private static SqlServerMigrationOperationPreProcessor CreatePreProcessor()
         {
-            return new SqlServerMigrationOperationPreProcessor(new SqlServerTypeMapper()).Process(operations, sourceDatabase, new DatabaseModel()).ToList();
+            var extensionProvider = new SqlServerMetadataExtensionProvider();
+            var nameGenerator = new RelationalNameGenerator(extensionProvider);
+            var typeMapper = new SqlServerTypeMapper();
+            var operationFactory = new MigrationOperationFactory(extensionProvider, nameGenerator);
+
+            return new SqlServerMigrationOperationPreProcessor(extensionProvider, nameGenerator, typeMapper, operationFactory);
         }
     }
 }

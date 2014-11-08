@@ -15,18 +15,13 @@ namespace Microsoft.Data.Entity.Migrations
         private readonly Dictionary<Type, List<MigrationOperation>> _allOperations
             = new Dictionary<Type, List<MigrationOperation>>();
 
-<<<<<<< HEAD
         public virtual bool Add<T>([NotNull] T operation, [CanBeNull] Func<T, T, bool> compareFunc = null)
             where T : MigrationOperation
-=======
-        public virtual void Add([NotNull] MigrationOperation operation)
->>>>>>> 1f5ec8b... Provider specific migrations part 1:
         {
             Check.NotNull(operation, "operation");
 
             List<MigrationOperation> operationList;
 
-<<<<<<< HEAD
             if (_allOperations.TryGetValue(typeof(T), out operationList))
             {
                 if (compareFunc != null
@@ -35,23 +30,14 @@ namespace Microsoft.Data.Entity.Migrations
                     return false;
                 }
 
-=======
-            if (_allOperations.TryGetValue(operation.GetType(), out operationList))
-            {
->>>>>>> 1f5ec8b... Provider specific migrations part 1:
                 operationList.Add(operation);
             }
             else
             {
-<<<<<<< HEAD
                 _allOperations.Add(typeof(T), new List<MigrationOperation> { operation });
             }
 
             return true;
-=======
-                _allOperations.Add(operation.GetType(), new List<MigrationOperation> { operation });
-            }
->>>>>>> 1f5ec8b... Provider specific migrations part 1:
         }
 
         public virtual void AddRange<T>([NotNull] IEnumerable<T> operations)
@@ -90,7 +76,6 @@ namespace Microsoft.Data.Entity.Migrations
                     : new T[0];
         }
 
-<<<<<<< HEAD
         public virtual bool Remove<T>([NotNull] T operation)
             where T : MigrationOperation
         {
@@ -101,8 +86,6 @@ namespace Microsoft.Data.Entity.Migrations
                 && operationList.Remove(operation);
         }
 
-=======
->>>>>>> 1f5ec8b... Provider specific migrations part 1:
         public virtual IReadOnlyList<MigrationOperation> GetAll()
         {
             return

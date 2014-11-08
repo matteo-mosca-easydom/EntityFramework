@@ -86,8 +86,9 @@ namespace Microsoft.Data.Entity.Migrations.Builders
 
             IDictionary<PropertyInfo, Column> propertyInfoToColumnMap;
             var columns = GetColumns(columnsSpecFunc(new ColumnBuilder()), out propertyInfoToColumnMap);
-            var table = new Table(tableName, columns);
-            var createTableOperation = new CreateTableOperation(table);
+            var createTableOperation = new CreateTableOperation(tableName);
+
+            createTableOperation.Columns.AddRange(columns);
 
             AddOperation(createTableOperation);
 

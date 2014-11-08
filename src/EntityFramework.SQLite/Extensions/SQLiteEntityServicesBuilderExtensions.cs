@@ -6,6 +6,7 @@ using Microsoft.Data.Entity;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Relational;
+using Microsoft.Data.Entity.Relational.Metadata;
 using Microsoft.Data.Entity.SQLite;
 using Microsoft.Data.Entity.SQLite.Utilities;
 using Microsoft.Data.Entity.Storage;
@@ -22,7 +23,6 @@ namespace Microsoft.Framework.DependencyInjection
 
             builder
                 .AddMigrations().ServiceCollection
-                .AddSingleton<SQLiteDatabaseBuilder>()
                 .AddSingleton<SQLiteValueGeneratorCache>()
                 .AddSingleton<SQLiteValueGeneratorSelector>()
                 .AddSingleton<SQLiteSqlGenerator>()
@@ -30,6 +30,9 @@ namespace Microsoft.Framework.DependencyInjection
                 .AddSingleton<SQLiteTypeMapper>()
                 .AddSingleton<SQLiteModificationCommandBatchFactory>()
                 .AddSingleton<SQLiteCommandBatchPreparer>()
+                .AddSingleton<RelationalMetadataExtensionProvider>()
+                .AddSingleton<RelationalNameGenerator>()
+                .AddSingleton<MigrationOperationFactory>()
                 .AddScoped<SQLiteBatchExecutor>()
                 .AddScoped<DataStoreSource, SQLiteDataStoreSource>()
                 .AddScoped<SQLiteDataStoreServices>()
@@ -40,7 +43,8 @@ namespace Microsoft.Framework.DependencyInjection
                 .AddScoped<SQLiteMigrator>()
                 .AddScoped<SQLiteDatabase>()
                 // TODO: Move to an AddMigrations extension method?
-                // Issue #556
+                // Issue #556                
+                .AddScoped<SQLiteMigrationOperationPreProcessor>()
                 .AddScoped<SQLiteModelDiffer>()
                 .AddScoped<MigrationAssembly>()
                 .AddScoped<HistoryRepository>();

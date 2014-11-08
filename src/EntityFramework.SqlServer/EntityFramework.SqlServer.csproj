@@ -71,6 +71,7 @@
     <Compile Include="Metadata\ReadOnlySqlServerKeyExtensions.cs" />
     <Compile Include="Metadata\ReadOnlySqlServerModelExtensions.cs" />
     <Compile Include="Metadata\ReadOnlySqlServerPropertyExtensions.cs" />
+    <Compile Include="Metadata\SqlServerMetadataExtensionProvider.cs" />
     <Compile Include="Metadata\SqlServerAnnotationNames.cs" />
     <Compile Include="Metadata\SqlServerEntityBuilder.cs" />
     <Compile Include="Metadata\SqlServerEntityTypeExtensions.cs" />
@@ -93,7 +94,6 @@
     <Compile Include="SqlServerDatabase.cs" />
     <Compile Include="SqlServerDatabaseExtensions.cs" />
     <Compile Include="SqlServerMetadataExtensions.cs" />
-    <Compile Include="SqlServerDatabaseBuilder.cs" />
     <Compile Include="SqlServerModelDiffer.cs" />
     <Compile Include="Update\SqlServerBatchExecutor.cs" />
     <Compile Include="SqlServerDataStoreServices.cs" />
