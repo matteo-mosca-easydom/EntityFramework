@@ -9,7 +9,7 @@ namespace Microsoft.Data.Entity.Relational.FunctionalTests
 {
     public abstract class RelationalNorthwindQueryFixture : NorthwindQueryFixtureBase
     {
-        public override void OnModelCreating(BasicModelBuilder modelBuilder)
+        public override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
